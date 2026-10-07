@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Farmer Dashboard - Fresh Farm</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="site-header" class="site-header"></header>
+
+<section class="page-banner">
+    <h1 id="welcome">Welcome, Farmer!</h1>
+    <p>Manage your products and customer orders</p>
+</section>
+
+<main class="container">
+
+    <div class="stats">
+        <div class="stat"><div class="value" id="statProducts">-</div><div class="label">Products listed</div></div>
+        <div class="stat"><div class="value" id="statActive">-</div><div class="label">Orders to handle</div></div>
+        <div class="stat"><div class="value" id="statDelivered">-</div><div class="label">Orders delivered</div></div>
+        <div class="stat"><div class="value" id="statEarnings">-</div><div class="label">Earnings (delivered)</div></div>
+    </div>
+
+    <div class="card">
+        <div class="dash-head">
+            <h2>🌱 My Products</h2>
+            <a href="add-product.html" class="btn btn-orange">+ Add Product</a>
+        </div>
+        <div id="productArea"><p class="loading">Loading...</p></div>
+    </div>
+
+    <div class="card">
+        <div class="dash-head">
+            <h2>📦 Customer Orders</h2>
+            <select id="orderFilter" class="status-select" aria-label="Filter orders">
+                <option value="active">Orders to handle</option>
+                <option value="all">All orders</option>
+                <option value="done">Delivered / cancelled</option>
+            </select>
+        </div>
+        <div id="orderArea"><p class="loading">Loading...</p></div>
+    </div>
+
+</main>
+
+<footer id="site-footer" class="site-footer"></footer>
+
+<script src="script.js"></script>
+<script>
+    const user = requireLogin("farmer");
+    const FLOW = ["Placed", "Confirmed", "Packed", "Out for Delivery", "Delivered"];
+
+    let myProducts = [];
+    let myOrders = [];
+
+    function renderStats() {
+        const active = myOrders.filter((o) => o.status !== "Delivered" && o.status !== "Cancelled");
+        const delivered = myOrders.filter((o) => o.status === "Delivered");
+        // Earnings only count this farmer's own items
+        const earnings = delivered.reduce(
+            (sum, o) => sum + o.items.reduce((s, i) => s + i.subtotal, 0), 0
+        );
+
+        document.getElementById("statProducts").textContent = myProducts.length;
+        document.getElementById("statActive").textContent = active.length;
+        document.getElementById("statDelivered").textContent = delivered.length;
+        document.getElementById("statEarnings").textContent = rupees(earnings);
+    }
+
+    function renderProducts() {
+        const area = document.getElementById("productArea");
+
+        if (myProducts.length === 0) {
+            area.innerHTML = `<div class="empty"><span class="emoji">🌱</span>
+                You haven't added any products yet.<br>
+                <a href="add-product.html" class="btn">Add your first product</a></div>`;
+            return;
+        }
+
+        area.innerHTML = `
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th></th><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${myProducts.map((p) => `
+                            <tr>
+                                <td><div class="cart-thumb" style="width:50px;height:50px;font-size:26px">${productPicture(p)}</div></td>
+                                <td><strong>${esc(p.product_name)}</strong></td>
+                                <td>${esc(p.category)}</td>
+                                <td>${rupees(p.price)} / ${esc(p.unit)}</td>
+                                <td>${p.quantity <= 0
+                                    ? '<span class="stock-out">Out of stock</span>'
+                                    : p.quantity <= 5
+                                        ? `<span class="stock-low">${p.quantity} left</span>`
+                                        : p.quantity}</td>
+                                <td style="white-space:nowrap">
+                                    <a href="add-product.html?id=${p.product_id}" class="btn btn-outline btn-small">Edit</a>
+                                    <button class="btn btn-danger btn-small" data-delete="${p.product_id}"
+                                            data-name="${esc(p.product_name)}">Delete</button>
+                                </td>
+                            </tr>`).join("")}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    function renderOrders() {
+        const area = document.getElementById("orderArea");
+        const filter = document.getElementById("orderFilter").value;
+        const closed = (o) => o.status === "Delivered" || o.status === "Cancelled";
+
+        const shown = myOrders.filter((o) =>
+            filter === "all" ? true : filter === "done" ? closed(o) : !closed(o)
+        );
+
+        if (shown.length === 0) {
+            area.innerHTML = `<div class="empty"><span class="emoji">📭</span>
+                ${filter === "active" ? "No orders waiting. New orders will appear here." : "No orders here yet."}</div>`;
+            return;
+        }
+
+        area.innerHTML = shown.map((o) => {
+            const mine = o.items.reduce((s, i) => s + i.subtotal, 0);
+            const next = FLOW.slice(FLOW.indexOf(o.status) + 1);
+
+            const controls = closed(o) ? "" : `
+                <div class="order-actions">
+                    <select class="status-select" id="status-${o.order_id}" aria-label="New status">
+                        ${next.map((s) => `<option>${s}</option>`).join("")}
+                        <option value="Cancelled">Cancel order</option>
+                    </select>
+                    <button class="btn btn-small" data-status="${o.order_id}">Update Status</button>
+                </div>`;
+
+            const delivery = closed(o) ? (o.delivery
+                ? `<p class="hint">Delivered by ${esc(o.delivery.delivery_person)}</p>` : "") : `
+                <form class="delivery-form" data-delivery="${o.order_id}">
+                    <input type="text" name="person" placeholder="Delivery person name"
+                           value="${o.delivery ? esc(o.delivery.delivery_person) : ""}" aria-label="Delivery person name">
+                    <input type="tel" name="phone" placeholder="Their mobile number" maxlength="13"
+                           value="${o.delivery ? esc(o.delivery.phone) : ""}" aria-label="Delivery person phone">
+                    <button type="submit" class="btn btn-outline btn-small">
+                        ${o.delivery ? "Update Delivery" : "Assign Delivery"}
+                    </button>
+                </form>`;
+
+            return `
+                <article class="order-card" style="box-shadow:none;border:1px solid var(--line)">
+                    <div class="order-head">
+                        <div>
+                            <h3>Order #${orderCode(o.order_id)}</h3>
+                            <span class="date">${formatDateTime(o.created_at)} · ${esc(o.customer_name)} · 📞 ${esc(o.phone)}</span>
+                        </div>
+                        ${statusBadge(o.status)}
+                    </div>
+                    <div class="order-body">
+                        ${o.items.map((i) => `
+                            <div class="order-line">
+                                <div>${productEmoji(i.product_name)} <strong>${esc(i.product_name)}</strong>
+                                    <div class="sub">${i.quantity} ${esc(i.unit)} × ${rupees(i.price)}</div></div>
+                                <div>${rupees(i.subtotal)}</div>
+                            </div>`).join("")}
+                        <p class="hint" style="padding:8px 0">
+                            📍 ${esc(o.delivery_address)}, ${esc(o.city)} - ${esc(o.pincode)}
+                            · ${o.payment ? esc(o.payment.payment_method) + " " + statusBadge(o.payment.payment_status) : ""}
+                        </p>
+                        ${delivery}
+                    </div>
+                    <div class="order-foot">
+                        <span class="total">Your items: ${rupees(mine)}</span>
+                        ${controls}
+                    </div>
+                </article>`;
+        }).join("");
+    }
+
+    async function loadAll() {
+        try {
+            [myProducts, myOrders] = await Promise.all([
+                api("/products/my-products"),
+                api("/orders/farmer-orders")
+            ]);
+            renderStats();
+            renderProducts();
+            renderOrders();
+        } catch (err) {
+            const msg = `<div class="empty"><span class="emoji">⚠️</span>${esc(err.message)}</div>`;
+            document.getElementById("productArea").innerHTML = msg;
+            document.getElementById("orderArea").innerHTML = msg;
+        }
+    }
+
+    // Delete product
+    document.getElementById("productArea").addEventListener("click", async (e) => {
+        const btn = e.target.closest("[data-delete]");
+        if (!btn) return;
+        if (!confirm(`Delete ${btn.dataset.name}? Customers will no longer see it.`)) return;
+
+        try {
+            await withButton(btn, "Deleting...", () =>
+                api("/products/" + btn.dataset.delete, { method: "DELETE" })
+            );
+            showToast("Product deleted");
+            loadAll();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    // Update order status
+    document.getElementById("orderArea").addEventListener("click", async (e) => {
+        const btn = e.target.closest("[data-status]");
+        if (!btn) return;
+
+        const id = btn.dataset.status;
+        const status = document.getElementById("status-" + id).value;
+
+        if (status === "Cancelled" && !confirm("Cancel this order? Stock will be returned.")) return;
+
+        try {
+            await withButton(btn, "Saving...", () =>
+                api(`/orders/${id}/status`, { method: "PUT", body: { status } })
+            );
+            showToast(status === "Cancelled" ? "Order cancelled" : "Order marked as " + status);
+            loadAll();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    // Assign delivery person
+    document.getElementById("orderArea").addEventListener("submit", async (e) => {
+        const form = e.target.closest("[data-delivery]");
+        if (!form) return;
+        e.preventDefault();
+
+        const body = {
+            order_id: Number(form.dataset.delivery),
+            delivery_person: form.person.value.trim(),
+            phone: form.phone.value.trim()
+        };
+
+        try {
+            await withButton(form.querySelector("button"), "Saving...", () =>
+                api("/deliveries", { method: "POST", body })
+            );
+            showToast("Delivery person saved");
+            loadAll();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    document.getElementById("orderFilter").addEventListener("change", renderOrders);
+
+    if (user) {
+        document.getElementById("welcome").textContent = `Welcome, ${user.name}!`;
+        loadAll();
+    }
+</script>
+
+</body>
+</html>

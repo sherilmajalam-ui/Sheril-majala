@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Products - Fresh Farm</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="site-header" class="site-header"></header>
+
+<section class="page-banner">
+    <h1>Available Fresh Products</h1>
+    <p>Fresh fruits and vegetables direct from farmers</p>
+</section>
+
+<main class="container">
+
+    <div class="toolbar">
+        <input type="search" id="searchBox" class="search-input"
+               placeholder="Search Tomato, Potato, Apple..." aria-label="Search products">
+
+        <select id="categoryFilter" class="category-filter" aria-label="Filter by category">
+            <option value="">All categories</option>
+            <option>Vegetables</option>
+            <option>Fruits</option>
+            <option>Leafy Vegetables</option>
+            <option>Grains</option>
+            <option>Other</option>
+        </select>
+    </div>
+
+    <div id="productList" class="product-grid">
+        <p class="loading">Loading products...</p>
+    </div>
+
+</main>
+
+<footer id="site-footer" class="site-footer"></footer>
+
+<script src="script.js"></script>
+<script>
+    let allProducts = [];
+    const viewer = getUser();
+    const isFarmer = viewer && viewer.role === "farmer";
+
+    async function loadProducts() {
+        const list = document.getElementById("productList");
+        try {
+            allProducts = await api("/products");
+            renderProducts();
+        } catch (err) {
+            list.innerHTML = `<div class="empty" style="grid-column:1/-1">
+                <span class="emoji">⚠️</span>${esc(err.message)}</div>`;
+        }
+    }
+
+    function renderProducts() {
+        const list = document.getElementById("productList");
+        const search = document.getElementById("searchBox").value.trim().toLowerCase();
+        const category = document.getElementById("categoryFilter").value;
+
+        const shown = allProducts.filter((p) =>
+            p.product_name.toLowerCase().includes(search) &&
+            (!category || p.category === category)
+        );
+
+        if (allProducts.length === 0) {
+            list.innerHTML = `<div class="empty" style="grid-column:1/-1">
+                <span class="emoji">🌱</span>No products yet. Farmers will add them soon.</div>`;
+            return;
+        }
+
+        if (shown.length === 0) {
+            list.innerHTML = `<div class="empty" style="grid-column:1/-1">
+                <span class="emoji">🔍</span>No products match your search.</div>`;
+            return;
+        }
+
+        list.innerHTML = shown.map((p) => {
+            const out = p.quantity <= 0;
+            let stock = "";
+            if (out) stock = `<p class="stock-out">Out of stock</p>`;
+            else if (p.quantity <= 5) stock = `<p class="stock-low">Only ${p.quantity} left</p>`;
+
+            // Farmers can browse but not buy
+            const buy = isFarmer ? "" : `
+                <div class="qty-row">
+                    <input type="number" id="qty-${p.product_id}" value="1" min="1"
+                           max="${p.quantity}" aria-label="Quantity" ${out ? "disabled" : ""}>
+                    <button class="btn btn-orange" data-id="${p.product_id}" ${out ? "disabled" : ""}>
+                        Add to Cart
+                    </button>
+                </div>`;
+
+            return `
+                <article class="product-card">
+                    <div class="product-img">${productPicture(p)}</div>
+                    <div class="product-body">
+                        <h3>${esc(p.product_name)}</h3>
+                        <p class="product-meta">Category: ${esc(p.category)}</p>
+                        <p class="product-meta">👨‍🌾 ${esc(p.farmer_name)}${p.farm_location ? ", " + esc(p.farm_location.split(",")[0]) : ""}</p>
+                        <p class="price">${rupees(p.price)} <small>/ ${esc(p.unit)}</small></p>
+                        ${stock}
+                        ${buy}
+                    </div>
+                </article>`;
+        }).join("");
+    }
+
+    document.getElementById("productList").addEventListener("click", (e) => {
+        const button = e.target.closest("button[data-id]");
+        if (!button) return;
+
+        const id = Number(button.dataset.id);
+        const product = allProducts.find((p) => p.product_id === id);
+        const qtyInput = document.getElementById("qty-" + id);
+        const qty = parseInt(qtyInput.value, 10);
+
+        if (!Number.isInteger(qty) || qty < 1) {
+            showToast("Please enter a quantity of 1 or more", true);
+            return;
+        }
+        if (addToCart(product, qty)) qtyInput.value = 1;
+    });
+
+    document.getElementById("searchBox").addEventListener("input", renderProducts);
+    document.getElementById("categoryFilter").addEventListener("change", renderProducts);
+
+    loadProducts();
+</script>
+
+</body>
+</html>

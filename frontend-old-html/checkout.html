@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkout - Fresh Farm</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="site-header" class="site-header"></header>
+
+<section class="page-banner">
+    <h1>Checkout</h1>
+    <p>Delivery details and payment</p>
+</section>
+
+<main class="container">
+
+    <form id="checkoutForm" class="two-col" novalidate>
+
+        <div>
+            <div class="card">
+                <h2>Delivery Address</h2>
+
+                <div class="form-group">
+                    <label for="address">House / street / area</label>
+                    <textarea id="address" placeholder="Door no, street, area" required></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="city">City</label>
+                        <input type="text" id="city" placeholder="City or town" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="pincode">PIN code</label>
+                        <input type="text" id="pincode" placeholder="6 digits" maxlength="6" inputmode="numeric" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="phone">Mobile number for delivery</label>
+                    <input type="tel" id="phone" placeholder="10-digit number" maxlength="13" required>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Payment Method</h2>
+
+                <label class="radio-option">
+                    <input type="radio" name="payment" value="Cash on Delivery" checked>
+                    💵 Cash on Delivery
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="payment" value="UPI">
+                    📱 UPI on delivery
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="payment" value="Card">
+                    💳 Card on delivery
+                </label>
+
+                <p class="hint">You pay the delivery person when your order arrives.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Order Summary</h2>
+            <div id="summaryItems" class="summary-items"></div>
+            <div class="summary-row"><span>Subtotal</span><span id="subtotal"></span></div>
+            <div class="summary-row"><span>Delivery charge</span><span id="delivery"></span></div>
+            <div class="summary-row summary-total"><span>Total</span><span id="total"></span></div>
+
+            <button type="submit" class="btn btn-orange btn-block" id="placeBtn" style="margin-top:18px">
+                Place Order
+            </button>
+
+            <p class="message" id="checkoutMessage"></p>
+
+            <a href="cart.html" class="btn btn-outline btn-block" style="margin-top:10px">Back to Cart</a>
+        </div>
+
+    </form>
+
+</main>
+
+<footer id="site-footer" class="site-footer"></footer>
+
+<script src="script.js"></script>
+<script>
+    const user = requireLogin("customer");
+    const cart = getCart();
+
+    if (user && cart.length === 0) {
+        location.href = "cart.html";
+    }
+
+    // Summary (the server recalculates the real total when the order is placed)
+    const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    document.getElementById("summaryItems").innerHTML = cart.map((i) =>
+        `<div><span>${esc(i.product_name)} × ${i.quantity} ${esc(i.unit)}</span>
+              <span>${rupees(i.price * i.quantity)}</span></div>`
+    ).join("");
+    document.getElementById("subtotal").textContent = rupees(subtotal);
+    document.getElementById("delivery").textContent = rupees(DELIVERY_CHARGE);
+    document.getElementById("total").textContent = rupees(subtotal + DELIVERY_CHARGE);
+
+    // Fill in saved phone and address
+    if (user) {
+        api("/customers/me").then((me) => {
+            document.getElementById("phone").value = me.phone || "";
+            if (me.address) document.getElementById("address").value = me.address;
+        }).catch(() => {});
+    }
+
+    document.getElementById("checkoutForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        hideMessage("checkoutMessage");
+
+        const body = {
+            items: cart.map((i) => ({ product_id: i.product_id, quantity: i.quantity })),
+            address: document.getElementById("address").value.trim(),
+            city: document.getElementById("city").value.trim(),
+            pincode: document.getElementById("pincode").value.trim(),
+            phone: document.getElementById("phone").value.trim(),
+            payment_method: document.querySelector("input[name=payment]:checked").value
+        };
+
+        if (body.address.length < 5) return showMessage("checkoutMessage", "Please enter your full address.");
+        if (body.city.length < 2) return showMessage("checkoutMessage", "Please enter your city.");
+        if (!/^\d{6}$/.test(body.pincode)) return showMessage("checkoutMessage", "Please enter a valid 6-digit PIN code.");
+        if (!/^(\+91)?[6-9]\d{9}$/.test(body.phone.replace(/\s/g, ""))) {
+            return showMessage("checkoutMessage", "Please enter a valid 10-digit mobile number.");
+        }
+
+        try {
+            await withButton(document.getElementById("placeBtn"), "Placing order...", async () => {
+                const result = await api("/orders", { method: "POST", body });
+                saveCart([]);
+                location.href = "order-tracking.html?id=" + result.orderId + "&new=1";
+            });
+        } catch (err) {
+            showMessage("checkoutMessage", err.message);
+        }
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Tracking - Fresh Farm</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="site-header" class="site-header"></header>
+
+<section class="page-banner">
+    <h1>🚚 Order Tracking</h1>
+    <p id="bannerText">Follow your order from the farm to your door</p>
+</section>
+
+<main class="container" style="max-width:1000px">
+    <div id="trackArea"><p class="loading">Loading order...</p></div>
+</main>
+
+<footer id="site-footer" class="site-footer"></footer>
+
+<script src="script.js"></script>
+<script>
+    const user = requireLogin();
+    const params = new URLSearchParams(location.search);
+    const orderId = params.get("id");
+
+    const STEPS = [
+        { status: "Placed", text: "Your order has been placed." },
+        { status: "Confirmed", text: "The farmer has confirmed your order." },
+        { status: "Packed", text: "Your products have been packed." },
+        { status: "Out for Delivery", text: "Your order is on the way." },
+        { status: "Delivered", text: "Your order has been delivered." }
+    ];
+
+    function timeline(status) {
+        if (status === "Cancelled") {
+            return `<div class="cancelled-box">❌ This order was cancelled. Any stock was returned to the farmer.</div>`;
+        }
+
+        const current = STEPS.findIndex((s) => s.status === status);
+
+        return `<ol class="timeline">${STEPS.map((step, i) => {
+            let cls = "";
+            if (i < current || status === "Delivered") cls = "done";
+            else if (i === current) cls = "current";
+
+            const icon = cls === "done" ? "✓" : "";
+            const text = i <= current ? step.text : "Waiting";
+
+            return `<li class="${cls}">
+                <span class="dot">${icon}</span>
+                <h4>${step.status}</h4>
+                <p>${text}</p>
+            </li>`;
+        }).join("")}</ol>`;
+    }
+
+    async function loadOrder() {
+        const area = document.getElementById("trackArea");
+
+        if (!orderId) {
+            area.innerHTML = `<div class="card empty"><span class="emoji">🔍</span>No order selected.<br>
+                <a href="orders.html" class="btn">Go to My Orders</a></div>`;
+            return;
+        }
+
+        try {
+            const o = await api("/orders/" + encodeURIComponent(orderId));
+            const isCustomer = user.role === "customer";
+
+            document.getElementById("bannerText").textContent =
+                `Order #${orderCode(o.order_id)} · ${o.status}`;
+
+            // Unique farmers in this order
+            const farmers = [];
+            o.items.forEach((i) => {
+                if (!farmers.some((f) => f.name === i.farmer_name)) {
+                    farmers.push({ name: i.farmer_name, location: i.farm_location, phone: i.farmer_phone });
+                }
+            });
+
+            const newOrderNote = params.get("new")
+                ? `<p class="message show success" style="margin:0 0 22px">✅ Order placed successfully! Thank you for shopping with Fresh Farm.</p>`
+                : "";
+
+            area.innerHTML = `
+                ${newOrderNote}
+
+                <div class="info-grid">
+                    <div class="card">
+                        <h2>Order Details</h2>
+                        <p><b>Order ID:</b> #${orderCode(o.order_id)}</p>
+                        <p><b>Placed on:</b> ${formatDateTime(o.created_at)}</p>
+                        <p><b>Status:</b> ${statusBadge(o.status)}</p>
+                        <p><b>Payment:</b> ${o.payment ? esc(o.payment.payment_method) + " " + statusBadge(o.payment.payment_status) : "-"}</p>
+                    </div>
+
+                    <div class="card">
+                        <h2>📍 Delivery</h2>
+                        <p><b>Customer:</b> ${esc(o.customer_name)}</p>
+                        <p><b>Address:</b> ${esc(o.delivery_address)}, ${esc(o.city)} - ${esc(o.pincode)}</p>
+                        <p><b>Phone:</b> ${esc(o.phone)}</p>
+                        ${o.delivery
+                            ? `<p><b>Delivery person:</b> ${esc(o.delivery.delivery_person)} (${esc(o.delivery.phone)})</p>`
+                            : `<p class="hint">A delivery person will be assigned soon.</p>`}
+                    </div>
+
+                    <div class="card">
+                        <h2>👨‍🌾 Farmer${farmers.length > 1 ? "s" : ""}</h2>
+                        ${farmers.map((f) => `
+                            <p><b>${esc(f.name)}</b><br>
+                            <span class="hint">${esc(f.location || "")}${f.phone ? " · " + esc(f.phone) : ""}</span></p>`).join("")}
+                    </div>
+                </div>
+
+                <div class="two-col" style="margin-top:22px">
+                    <div class="card">
+                        <h2>📋 Order Status</h2>
+                        ${timeline(o.status)}
+                    </div>
+
+                    <div class="card">
+                        <h2>Items</h2>
+                        <div class="summary-items">
+                            ${o.items.map((i) => `
+                                <div><span>${productEmoji(i.product_name)} ${esc(i.product_name)} × ${i.quantity} ${esc(i.unit)}</span>
+                                     <span>${rupees(i.subtotal)}</span></div>`).join("")}
+                        </div>
+                        <div class="summary-row"><span>Subtotal</span><span>${rupees(o.subtotal)}</span></div>
+                        <div class="summary-row"><span>Delivery charge</span><span>${rupees(o.delivery_charge)}</span></div>
+                        <div class="summary-row summary-total"><span>Total</span><span>${rupees(o.total_amount)}</span></div>
+
+                        <div style="margin-top:18px; display:grid; gap:10px">
+                            ${isCustomer && o.status === "Placed"
+                                ? `<button class="btn btn-danger btn-block" id="cancelBtn">Cancel Order</button>`
+                                : ""}
+                            <a href="${isCustomer ? "orders.html" : "farmer-dashboard.html"}" class="btn btn-outline btn-block">
+                                ${isCustomer ? "Back to My Orders" : "Back to Dashboard"}
+                            </a>
+                            ${isCustomer ? `<a href="products.html" class="btn btn-block">Continue Shopping</a>` : ""}
+                        </div>
+                    </div>
+                </div>`;
+
+            const cancelBtn = document.getElementById("cancelBtn");
+            if (cancelBtn) {
+                cancelBtn.addEventListener("click", async () => {
+                    if (!confirm("Cancel this order?")) return;
+                    try {
+                        await withButton(cancelBtn, "Cancelling...", () =>
+                            api(`/orders/${o.order_id}/cancel`, { method: "PUT" })
+                        );
+                        showToast("Order cancelled");
+                        history.replaceState(null, "", "?id=" + o.order_id);
+                        params.delete("new");
+                        loadOrder();
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                });
+            }
+        } catch (err) {
+            area.innerHTML = `<div class="card empty"><span class="emoji">🔍</span>${esc(err.message)}<br>
+                <a href="index.html" class="btn">Go Home</a></div>`;
+        }
+    }
+
+    if (user) loadOrder();
+</script>
+
+</body>
+</html>

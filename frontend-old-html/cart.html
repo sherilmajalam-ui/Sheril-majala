@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cart - Fresh Farm</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="site-header" class="site-header"></header>
+
+<section class="page-banner">
+    <h1>🛒 Shopping Cart</h1>
+    <p>Review your items before checkout</p>
+</section>
+
+<main class="container">
+    <div id="cartArea"><p class="loading">Loading cart...</p></div>
+</main>
+
+<footer id="site-footer" class="site-footer"></footer>
+
+<script src="script.js"></script>
+<script>
+    // Refresh prices and stock from the server, drop products that were removed
+    async function syncCart() {
+        const cart = getCart();
+        if (cart.length === 0) return;
+
+        try {
+            const products = await api("/products");
+            const updated = [];
+            let changed = false;
+
+            for (const item of cart) {
+                const p = products.find((x) => x.product_id === item.product_id);
+                if (!p || p.quantity <= 0) {
+                    changed = true;
+                    continue;
+                }
+                if (p.price !== item.price || item.quantity > p.quantity) changed = true;
+                updated.push({
+                    ...item,
+                    price: p.price,
+                    stock: p.quantity,
+                    quantity: Math.min(item.quantity, p.quantity)
+                });
+            }
+
+            saveCart(updated);
+            if (changed) showToast("Your cart was updated with the latest prices and stock");
+        } catch (err) {
+            // Server down: still show the saved cart
+        }
+    }
+
+    function renderCart() {
+        const area = document.getElementById("cartArea");
+        const cart = getCart();
+
+        if (cart.length === 0) {
+            area.innerHTML = `
+                <div class="card empty">
+                    <span class="emoji">🧺</span>
+                    Your cart is empty.<br>
+                    <a href="products.html" class="btn">Browse products</a>
+                </div>`;
+            return;
+        }
+
+        const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+        const user = getUser();
+
+        let checkoutButton;
+        if (user && user.role === "farmer") {
+            checkoutButton = `<p class="hint">Farmer accounts can't place orders. Log out and use a customer account.</p>`;
+        } else if (!user) {
+            checkoutButton = `
+                <a href="customer.html?next=checkout.html#login" class="btn btn-orange btn-block">Login to Checkout</a>
+                <p class="hint" style="text-align:center">New customer? <a href="customer.html#register">Register here</a></p>`;
+        } else {
+            checkoutButton = `<a href="checkout.html" class="btn btn-orange btn-block">Proceed to Checkout</a>`;
+        }
+
+        area.innerHTML = `
+            <div class="two-col">
+                <div class="card">
+                    <h2>Items (${cartItemCount()})</h2>
+                    ${cart.map((item) => `
+                        <div class="cart-item">
+                            <div class="cart-thumb">${productPicture(item)}</div>
+                            <div>
+                                <h3>${esc(item.product_name)}</h3>
+                                <p class="product-meta">${rupees(item.price)} / ${esc(item.unit)}${item.farmer_name ? " · " + esc(item.farmer_name) : ""}</p>
+                            </div>
+                            <div class="cart-controls">
+                                <input type="number" class="qty" min="1" max="${item.stock}"
+                                       value="${item.quantity}" data-id="${item.product_id}"
+                                       aria-label="Quantity of ${esc(item.product_name)}">
+                                <button class="btn btn-danger btn-small" data-remove="${item.product_id}">Remove</button>
+                            </div>
+                            <div class="line-total">${rupees(item.price * item.quantity)}</div>
+                        </div>`).join("")}
+                </div>
+
+                <div class="card">
+                    <h2>Order Summary</h2>
+                    <div class="summary-row"><span>Subtotal</span><span>${rupees(subtotal)}</span></div>
+                    <div class="summary-row"><span>Delivery charge</span><span>${rupees(DELIVERY_CHARGE)}</span></div>
+                    <div class="summary-row summary-total"><span>Total</span><span>${rupees(subtotal + DELIVERY_CHARGE)}</span></div>
+                    <div style="margin-top:18px">${checkoutButton}</div>
+                    <a href="products.html" class="btn btn-outline btn-block" style="margin-top:10px">Continue Shopping</a>
+                </div>
+            </div>`;
+    }
+
+    document.getElementById("cartArea").addEventListener("change", (e) => {
+        if (!e.target.matches("input.qty")) return;
+
+        const id = Number(e.target.dataset.id);
+        const cart = getCart();
+        const item = cart.find((i) => i.product_id === id);
+        let qty = parseInt(e.target.value, 10);
+
+        if (!Number.isInteger(qty) || qty < 1) qty = 1;
+        if (qty > item.stock) {
+            qty = item.stock;
+            showToast(`Only ${item.stock} ${item.unit} available`, true);
+        }
+        item.quantity = qty;
+        saveCart(cart);
+        renderCart();
+    });
+
+    document.getElementById("cartArea").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-remove]");
+        if (!btn) return;
+        const id = Number(btn.dataset.remove);
+        saveCart(getCart().filter((i) => i.product_id !== id));
+        renderCart();
+    });
+
+    syncCart().then(renderCart);
+</script>
+
+</body>
+</html>

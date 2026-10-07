@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Orders - Fresh Farm</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="site-header" class="site-header"></header>
+
+<section class="page-banner">
+    <h1>📦 My Orders</h1>
+    <p>Track and manage your Fresh Farm orders</p>
+</section>
+
+<main class="container" style="max-width:900px">
+    <div id="orderList"><p class="loading">Loading your orders...</p></div>
+</main>
+
+<footer id="site-footer" class="site-footer"></footer>
+
+<script src="script.js"></script>
+<script>
+    const user = requireLogin("customer");
+
+    async function loadOrders() {
+        const list = document.getElementById("orderList");
+
+        try {
+            const orders = await api("/orders/my-orders");
+
+            if (orders.length === 0) {
+                list.innerHTML = `
+                    <div class="card empty">
+                        <span class="emoji">📦</span>
+                        You haven't placed any orders yet.<br>
+                        <a href="products.html" class="btn">Start shopping</a>
+                    </div>`;
+                return;
+            }
+
+            list.innerHTML = orders.map((o) => `
+                <article class="order-card">
+                    <div class="order-head">
+                        <div>
+                            <h3>Order #${orderCode(o.order_id)}</h3>
+                            <span class="date">Placed on ${formatDate(o.created_at)}</span>
+                        </div>
+                        ${statusBadge(o.status)}
+                    </div>
+
+                    <div class="order-body">
+                        ${o.items.map((i) => `
+                            <div class="order-line">
+                                <div>
+                                    ${productEmoji(i.product_name)} <strong>${esc(i.product_name)}</strong>
+                                    <div class="sub">${i.quantity} ${esc(i.unit)} × ${rupees(i.price)} · Farmer: ${esc(i.farmer_name)}</div>
+                                </div>
+                                <div>${rupees(i.subtotal)}</div>
+                            </div>`).join("")}
+                    </div>
+
+                    <div class="order-foot">
+                        <div>
+                            <span class="total">Total: ${rupees(o.total_amount)}</span>
+                            <div class="sub hint">
+                                ${o.payment ? esc(o.payment.payment_method) + " · " + statusBadge(o.payment.payment_status) : ""}
+                            </div>
+                        </div>
+                        <div class="order-actions">
+                            ${o.status === "Placed"
+                                ? `<button class="btn btn-danger btn-small" data-cancel="${o.order_id}">Cancel Order</button>`
+                                : ""}
+                            <a href="order-tracking.html?id=${o.order_id}" class="btn btn-orange">
+                                ${o.status === "Delivered" || o.status === "Cancelled" ? "View Details" : "Track Order"}
+                            </a>
+                        </div>
+                    </div>
+                </article>`).join("");
+        } catch (err) {
+            list.innerHTML = `<div class="card empty"><span class="emoji">⚠️</span>${esc(err.message)}</div>`;
+        }
+    }
+
+    document.getElementById("orderList").addEventListener("click", async (e) => {
+        const btn = e.target.closest("[data-cancel]");
+        if (!btn) return;
+
+        if (!confirm("Cancel this order?")) return;
+
+        try {
+            await withButton(btn, "Cancelling...", () =>
+                api(`/orders/${btn.dataset.cancel}/cancel`, { method: "PUT" })
+            );
+            showToast("Order cancelled");
+            loadOrders();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    if (user) loadOrders();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer - Fresh Farm</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="site-header" class="site-header"></header>
+
+<section class="page-banner">
+    <h1>🛒 Customer Account</h1>
+    <p>Buy fresh produce straight from farmers</p>
+</section>
+
+<main class="container narrow">
+
+    <div class="card">
+
+        <div class="tabs" role="tablist">
+            <button class="tab" id="loginTab" type="button" role="tab">Login</button>
+            <button class="tab" id="registerTab" type="button" role="tab">Register</button>
+        </div>
+
+        <!-- LOGIN -->
+        <form id="loginForm" novalidate>
+            <h2>Customer Login</h2>
+
+            <div class="form-group">
+                <label for="loginEmail">Email</label>
+                <input type="email" id="loginEmail" placeholder="Enter your email" autocomplete="email" required>
+            </div>
+
+            <div class="form-group">
+                <label for="loginPassword">Password</label>
+                <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password" required>
+            </div>
+
+            <button type="submit" class="btn btn-block" id="loginBtn">Login</button>
+
+            <p class="message" id="loginMessage"></p>
+
+            <p class="switch-text">New here? <a href="#register">Create a customer account</a></p>
+
+            <p class="demo-note">Demo account: customer@freshfarm.com / customer123</p>
+        </form>
+
+        <!-- REGISTER -->
+        <form id="registerForm" novalidate>
+            <h2>Customer Registration</h2>
+
+            <div class="form-group">
+                <label for="regName">Full name</label>
+                <input type="text" id="regName" placeholder="Enter your full name" autocomplete="name" required>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="regEmail">Email</label>
+                    <input type="email" id="regEmail" placeholder="you@example.com" autocomplete="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="regPhone">Mobile number</label>
+                    <input type="tel" id="regPhone" placeholder="10-digit number" maxlength="13" autocomplete="tel" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="regAddress">Address (optional)</label>
+                <textarea id="regAddress" placeholder="Your home address"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="regPassword">Password</label>
+                    <input type="password" id="regPassword" placeholder="At least 6 characters" autocomplete="new-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="regConfirm">Confirm password</label>
+                    <input type="password" id="regConfirm" placeholder="Type it again" autocomplete="new-password" required>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-block btn-orange" id="registerBtn">Register as Customer</button>
+
+            <p class="message" id="registerMessage"></p>
+
+            <p class="switch-text">Already registered? <a href="#login">Login</a></p>
+        </form>
+
+    </div>
+
+</main>
+
+<footer id="site-footer" class="site-footer"></footer>
+
+<script src="script.js"></script>
+<script>
+    const ROLE = "customer";
+    const API_PATH = "/customers";
+
+    const loginForm = document.getElementById("loginForm");
+    const registerForm = document.getElementById("registerForm");
+    const loginTab = document.getElementById("loginTab");
+    const registerTab = document.getElementById("registerTab");
+
+    function showTab(name) {
+        const isLogin = name !== "register";
+        loginForm.style.display = isLogin ? "block" : "none";
+        registerForm.style.display = isLogin ? "none" : "block";
+        loginTab.classList.toggle("active", isLogin);
+        registerTab.classList.toggle("active", !isLogin);
+        loginTab.setAttribute("aria-selected", isLogin);
+        registerTab.setAttribute("aria-selected", !isLogin);
+    }
+
+    loginTab.addEventListener("click", () => (location.hash = "login"));
+    registerTab.addEventListener("click", () => (location.hash = "register"));
+    window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+    showTab(location.hash.slice(1));
+
+    const params = new URLSearchParams(location.search);
+    if (params.get("expired")) {
+        showMessage("loginMessage", "Your session expired. Please log in again.");
+    }
+
+    // Where to go after login. Only allow simple page names.
+    function nextPage() {
+        const next = params.get("next");
+        if (next && /^[a-z-]+\.html(\?[\w=&-]*)?$/.test(next)) return next;
+        return ROLE === "farmer" ? "farmer-dashboard.html" : "products.html";
+    }
+
+    // Already logged in with this role? Go straight in.
+    const existing = getUser();
+    if (existing && existing.role === ROLE && localStorage.getItem("ff_token")) {
+        location.href = nextPage();
+    }
+
+    /* ----- Login ----- */
+    loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        hideMessage("loginMessage");
+
+        const email = document.getElementById("loginEmail").value.trim();
+        const password = document.getElementById("loginPassword").value;
+
+        if (!email || !password) {
+            return showMessage("loginMessage", "Please enter your email and password.");
+        }
+
+        try {
+            await withButton(document.getElementById("loginBtn"), "Logging in...", async () => {
+                const data = await api(API_PATH + "/login", {
+                    method: "POST",
+                    body: { email, password }
+                });
+                saveLogin(data.token, data.user);
+                location.href = nextPage();
+            });
+        } catch (err) {
+            showMessage("loginMessage", err.message);
+        }
+    });
+
+    /* ----- Register ----- */
+    registerForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        hideMessage("registerMessage");
+
+        const body = {
+            name: document.getElementById("regName").value.trim(),
+            email: document.getElementById("regEmail").value.trim(),
+            phone: document.getElementById("regPhone").value.trim(),
+            address: document.getElementById("regAddress").value.trim(),
+            password: document.getElementById("regPassword").value
+        };
+        const confirm = document.getElementById("regConfirm").value;
+
+        if (!body.name || !body.email || !body.phone || !body.password) {
+            return showMessage("registerMessage", "Please fill name, email, mobile number and password.");
+        }
+        if (!/^(\+91)?[6-9]\d{9}$/.test(body.phone.replace(/\s/g, ""))) {
+            return showMessage("registerMessage", "Please enter a valid 10-digit mobile number.");
+        }
+        if (body.password.length < 6) {
+            return showMessage("registerMessage", "Password must be at least 6 characters.");
+        }
+        if (body.password !== confirm) {
+            return showMessage("registerMessage", "Passwords don't match.");
+        }
+
+        try {
+            await withButton(document.getElementById("registerBtn"), "Registering...", async () => {
+                await api(API_PATH + "/register", { method: "POST", body });
+            });
+
+            registerForm.reset();
+            location.hash = "login";
+            document.getElementById("loginEmail").value = body.email;
+            document.getElementById("loginPassword").focus();
+            showMessage("loginMessage", "Registration successful. Please log in.", "success");
+        } catch (err) {
+            showMessage("registerMessage", err.message);
+        }
+    });
+</script>
+
+</body>
+</html>

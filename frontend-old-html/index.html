@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fresh Farm Farmer Direct Selling System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="home-page">
+
+<header id="site-header" class="site-header"></header>
+
+<main>
+
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Fresh Farm Farmer<br>Direct Selling System</h1>
+            <p>Fresh fruits and vegetables directly from farmers to your home.</p>
+
+            <a href="products.html" class="hero-btn">View Products</a>
+            <a href="farmer.html#register" class="hero-btn" id="joinBtn">Join as Farmer</a>
+        </div>
+    </section>
+
+    <section class="features">
+        <div class="feature">
+            <div class="icon">👨‍🌾</div>
+            <h3>Direct From Farmers</h3>
+            <p>Buy fresh produce straight from the farmers who grow it. No middlemen.</p>
+        </div>
+
+        <div class="feature">
+            <div class="icon">🥬</div>
+            <h3>Fresh Products</h3>
+            <p>Vegetables, fruits and grains listed by farmers near you.</p>
+        </div>
+
+        <div class="feature">
+            <div class="icon">🛒</div>
+            <h3>Easy Shopping</h3>
+            <p>Search, add to cart, and order in a few taps.</p>
+        </div>
+
+        <div class="feature">
+            <div class="icon">📦</div>
+            <h3>Track Orders</h3>
+            <p>Follow your order from the farm to your door.</p>
+        </div>
+    </section>
+
+    <section class="how-it-works">
+        <h2 class="section-title">How it works</h2>
+
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <h3>Farmers list produce</h3>
+                <p>Farmers add products with their own price and stock.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <h3>You place an order</h3>
+                <p>Pick products, choose a payment method, and checkout.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <h3>Farmer packs it</h3>
+                <p>The farmer confirms, packs and sends your order.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">4</div>
+                <h3>Delivered home</h3>
+                <p>Pay on delivery and enjoy fresh food.</p>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<footer id="site-footer" class="site-footer"></footer>
+
+<script src="script.js"></script>
+<script>
+    // Logged-in farmers go to their dashboard instead of registering again
+    const currentUser = getUser();
+    if (currentUser && currentUser.role === "farmer") {
+        const join = document.getElementById("joinBtn");
+        join.textContent = "Go to Dashboard";
+        join.href = "farmer-dashboard.html";
+    }
+</script>
+
+</body>
+</html>

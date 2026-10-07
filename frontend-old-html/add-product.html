@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Product - Fresh Farm</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="site-header" class="site-header"></header>
+
+<section class="page-banner">
+    <h1 id="pageTitle">Add New Product</h1>
+    <p>Farmer Product Management</p>
+</section>
+
+<main class="container" style="max-width:640px">
+
+    <form id="productForm" class="card" novalidate>
+
+        <div class="form-group">
+            <label for="productName">Product name</label>
+            <input type="text" id="productName" placeholder="Example: Tomato" maxlength="100" required>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="category">Category</label>
+                <select id="category" required>
+                    <option value="">Select category</option>
+                    <option>Vegetables</option>
+                    <option>Fruits</option>
+                    <option>Leafy Vegetables</option>
+                    <option>Grains</option>
+                    <option>Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="unit">Sold per</label>
+                <select id="unit">
+                    <option>Kg</option>
+                    <option>500 g</option>
+                    <option>250 g</option>
+                    <option>Piece</option>
+                    <option>Dozen</option>
+                    <option>Bunch</option>
+                    <option>Litre</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="price">Price (₹)</label>
+                <input type="number" id="price" placeholder="Price per unit" min="1" step="0.5" required>
+            </div>
+            <div class="form-group">
+                <label for="quantity">Stock available</label>
+                <input type="number" id="quantity" placeholder="How many units" min="0" step="1" required>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" placeholder="How it's grown, freshness, taste..."></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="imageUrl">Photo link (optional)</label>
+            <input type="url" id="imageUrl" placeholder="https://...">
+            <p class="hint">Paste an image link. Without one, an emoji is shown.</p>
+        </div>
+
+        <div class="product-img" id="preview" style="border-radius:8px;margin-bottom:18px">🌱</div>
+
+        <button type="submit" class="btn btn-orange btn-block" id="saveBtn">Add Product</button>
+
+        <p class="message" id="productMessage"></p>
+
+        <a href="farmer-dashboard.html" class="btn btn-outline btn-block" style="margin-top:10px">Back to Dashboard</a>
+    </form>
+
+</main>
+
+<footer id="site-footer" class="site-footer"></footer>
+
+<script src="script.js"></script>
+<script>
+    const user = requireLogin("farmer");
+    const editId = new URLSearchParams(location.search).get("id");
+
+    const field = (id) => document.getElementById(id);
+
+    function updatePreview() {
+        field("preview").innerHTML = productPicture({
+            product_name: field("productName").value || "",
+            category: field("category").value,
+            image_url: field("imageUrl").value.trim()
+        });
+    }
+
+    ["productName", "category", "imageUrl"].forEach((id) =>
+        field(id).addEventListener("input", updatePreview)
+    );
+
+    // Edit mode: load the product into the form
+    async function loadForEdit() {
+        try {
+            const p = await api("/products/" + encodeURIComponent(editId));
+
+            if (p.farmer_id !== user.id) {
+                showMessage("productMessage", "You can only edit your own products.");
+                field("saveBtn").disabled = true;
+                return;
+            }
+
+            field("productName").value = p.product_name;
+            field("category").value = p.category;
+            field("unit").value = p.unit;
+            field("price").value = p.price;
+            field("quantity").value = p.quantity;
+            field("description").value = p.description || "";
+            field("imageUrl").value = p.image_url || "";
+            updatePreview();
+        } catch (err) {
+            showMessage("productMessage", err.message);
+            field("saveBtn").disabled = true;
+        }
+    }
+
+    field("productForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        hideMessage("productMessage");
+
+        const body = {
+            product_name: field("productName").value.trim(),
+            category: field("category").value,
+            unit: field("unit").value,
+            price: Number(field("price").value),
+            quantity: Number(field("quantity").value),
+            description: field("description").value.trim(),
+            image_url: field("imageUrl").value.trim()
+        };
+
+        if (body.product_name.length < 2) return showMessage("productMessage", "Please enter a product name.");
+        if (!body.category) return showMessage("productMessage", "Please choose a category.");
+        if (!(body.price > 0)) return showMessage("productMessage", "Price must be more than 0.");
+        if (field("quantity").value === "" || !Number.isInteger(body.quantity) || body.quantity < 0) {
+            return showMessage("productMessage", "Stock must be a whole number (0 or more).");
+        }
+
+        try {
+            await withButton(field("saveBtn"), "Saving...", async () => {
+                if (editId) {
+                    await api("/products/" + editId, { method: "PUT", body });
+                } else {
+                    await api("/products", { method: "POST", body });
+                }
+            });
+
+            if (editId) {
+                showToast("Product updated");
+                setTimeout(() => (location.href = "farmer-dashboard.html"), 700);
+            } else {
+                field("productForm").reset();
+                updatePreview();
+                showMessage("productMessage", `${body.product_name} added. Customers can see it now.`, "success");
+            }
+        } catch (err) {
+            showMessage("productMessage", err.message);
+        }
+    });
+
+    if (user && editId) {
+        field("pageTitle").textContent = "Edit Product";
+        document.title = "Edit Product - Fresh Farm";
+        field("saveBtn").textContent = "Save Changes";
+        loadForEdit();
+    }
+</script>
+
+</body>
+</html>
